@@ -72,16 +72,6 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(typed.visibleRect.width, 0)
         XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
-        let captureURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
-        defer { try? FileManager.default.removeItem(at: captureURL) }
-        let capture = Process()
-        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        capture.arguments = ["-x", "-o", "-l", String(editor.windowNumber), captureURL.path]
-        try capture.run()
-        capture.waitUntilExit()
-        XCTAssertEqual(capture.terminationStatus, 0)
-        let screenImage = try XCTUnwrap(NSImage(contentsOf: captureURL))
-        try recordImage(screenImage, "text-capture-window-probe")
 
         controller.send(.toggleDestinations(context))
         try await settle()
@@ -441,10 +431,7 @@ final class ScreenshotTests: XCTestCase {
     }
 
     private func shoot(_ windows: [NSWindow], _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
-        try recordImage(Self.composite(windows), name, file: file, line: line)
-    }
-
-    private func recordImage(_ image: NSImage, _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
+        let image = try Self.composite(windows)
         let filename = "sendpoint.\(name)-\(appearance).png"
         let hadBaseline = FileManager.default.fileExists(atPath: directory + "/" + filename)
         let failure = verifySnapshot(
@@ -460,25 +447,37 @@ final class ScreenshotTests: XCTestCase {
 
     private static func composite(_ windows: [NSWindow]) throws -> NSImage {
         let visible = windows.filter(\.isVisible)
-        let bounds = visible.dropFirst().map(\.frame).reduce(visible[0].frame) { $0.union($1) }
+        let first = try XCTUnwrap(visible.first)
+        let bounds = visible.dropFirst().map(\.frame).reduce(first.frame) { $0.union($1) }
+        let layers = try visible.map { window in (window.frame, try capture(window)) }
         let image = NSImage(size: bounds.size)
         image.lockFocus()
         (NSApp.appearance?.bestMatch(from: [.darkAqua]) == nil ? NSColor.white : NSColor.black).setFill()
         NSRect(origin: .zero, size: bounds.size).fill()
-        for window in visible {
-            let view = try XCTUnwrap(window.contentView)
-            view.layoutSubtreeIfNeeded()
-            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-            view.cacheDisplay(in: view.bounds, to: bitmap)
-            let layer = NSImage(size: view.bounds.size)
-            layer.addRepresentation(bitmap)
+        for (frame, layer) in layers {
             layer.draw(in: NSRect(
-                x: window.frame.minX - bounds.minX, y: window.frame.minY - bounds.minY,
-                width: view.bounds.width, height: view.bounds.height
+                x: frame.minX - bounds.minX, y: frame.minY - bounds.minY,
+                width: frame.width, height: frame.height
             ), from: .zero, operation: .sourceOver, fraction: 1)
         }
         image.unlockFocus()
         return image
+    }
+
+    private static func capture(_ window: NSWindow) throws -> NSImage {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(window.windowNumber), url.path]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw NSError(domain: "ScreenshotCapture", code: Int(process.terminationStatus), userInfo: [
+                NSLocalizedDescriptionKey: "Window capture failed for \(window.windowNumber).",
+            ])
+        }
+        return try XCTUnwrap(NSImage(contentsOf: url))
     }
 
     private static func textView(in view: NSView) -> NSTextView? {
