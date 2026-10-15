@@ -72,8 +72,16 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(typed.visibleRect.width, 0)
         XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
-        let pdfImage = try XCTUnwrap(NSImage(data: hosting.dataWithPDF(inside: hosting.bounds)))
-        try recordImage(pdfImage, "text-capture-pdf-probe")
+        let captureURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+        defer { try? FileManager.default.removeItem(at: captureURL) }
+        let capture = Process()
+        capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        capture.arguments = ["-x", "-o", "-l", String(editor.windowNumber), captureURL.path]
+        try capture.run()
+        capture.waitUntilExit()
+        XCTAssertEqual(capture.terminationStatus, 0)
+        let screenImage = try XCTUnwrap(NSImage(contentsOf: captureURL))
+        try recordImage(screenImage, "text-capture-window-probe")
 
         controller.send(.toggleDestinations(context))
         try await settle()
