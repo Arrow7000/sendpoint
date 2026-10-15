@@ -70,17 +70,11 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
         let hosting = try XCTUnwrap(editor.contentView)
-        let native = try XCTUnwrap(typed.bitmapImageRepForCachingDisplay(in: typed.bounds))
-        typed.cacheDisplay(in: typed.bounds, to: native)
-        let nativeImage = NSImage(size: typed.bounds.size)
-        nativeImage.addRepresentation(native)
-        try recordImage(nativeImage, "text-capture-native-probe")
-        let layerBitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
-        let layerContext = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: layerBitmap))
-        try XCTUnwrap(hosting.layer).render(in: layerContext.cgContext)
-        let layerImage = NSImage(size: hosting.bounds.size)
-        layerImage.addRepresentation(layerBitmap)
-        try recordImage(layerImage, "text-capture-layer-probe")
+        let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+        let hostImage = NSImage(size: hosting.bounds.size)
+        hostImage.addRepresentation(bitmap)
+        try recordImage(hostImage, "text-capture-host-bitmap-probe")
 
         controller.send(.toggleDestinations(context))
         try await settle()
@@ -460,11 +454,7 @@ final class ScreenshotTests: XCTestCase {
     private static func composite(_ windows: [NSWindow]) throws -> NSImage {
         let visible = windows.filter(\.isVisible)
         let bounds = visible.dropFirst().map(\.frame).reduce(visible[0].frame) { $0.union($1) }
-        let image = NSImage(size: bounds.size)
-        image.lockFocus()
-        (NSApp.appearance?.bestMatch(from: [.darkAqua]) == nil ? NSColor.white : NSColor.black).setFill()
-        NSRect(origin: .zero, size: bounds.size).fill()
-        for window in visible {
+        let layers = try visible.map { window -> (NSWindow, NSImage) in
             let view = try XCTUnwrap(window.contentView)
             view.layoutSubtreeIfNeeded()
             let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
@@ -473,9 +463,16 @@ final class ScreenshotTests: XCTestCase {
             }
             let layer = NSImage(size: view.bounds.size)
             layer.addRepresentation(bitmap)
+            return (window, layer)
+        }
+        let image = NSImage(size: bounds.size)
+        image.lockFocus()
+        (NSApp.appearance?.bestMatch(from: [.darkAqua]) == nil ? NSColor.white : NSColor.black).setFill()
+        NSRect(origin: .zero, size: bounds.size).fill()
+        for (window, layer) in layers {
             layer.draw(in: NSRect(
                 x: window.frame.minX - bounds.minX, y: window.frame.minY - bounds.minY,
-                width: view.bounds.width, height: view.bounds.height
+                width: layer.size.width, height: layer.size.height
             ), from: .zero, operation: .sourceOver, fraction: 1)
         }
         image.unlockFocus()
