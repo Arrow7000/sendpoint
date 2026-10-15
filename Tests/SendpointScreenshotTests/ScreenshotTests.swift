@@ -43,9 +43,10 @@ final class ScreenshotTests: XCTestCase {
         let context = NoteCaptureContext(stackID: stacks[0].id)
         controller.send(.begin(.text, context))
         controller.send(.selection(context, CapturedSelection(text: "A short selected passage")))
-        let editor = CaptureWindows.makeEditorPanel(contentView: CaptureHostingView(
-            rootView: CaptureView(model: controller)
-        ))
+        let hosting = CaptureHostingView(rootView: CaptureView(model: controller))
+        hosting.sizingOptions = []
+        hosting.safeAreaRegions = []
+        let editor = CaptureWindows.makeEditorPanel(contentView: hosting)
         editor.setContentSize(VoiceCaptureLayout.cardSize(
             lines: controller.transcriptionPreviewLines,
             fontSize: CGFloat(controller.transcriptionPreviewFontSize)
@@ -57,6 +58,8 @@ final class ScreenshotTests: XCTestCase {
             store.teardown()
         }
         try await show([editor])
+        editor.presentActivated()
+        try await settle()
         try shoot([editor], "text-capture-empty")
 
         let typed = try XCTUnwrap(Self.textView(in: try XCTUnwrap(editor.contentView)))
@@ -69,12 +72,6 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(typed.visibleRect.width, 0)
         XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
-        let hosting = try XCTUnwrap(editor.contentView)
-        let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
-        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-        let hostImage = NSImage(size: hosting.bounds.size)
-        hostImage.addRepresentation(bitmap)
-        try recordImage(hostImage, "text-capture-host-bitmap-probe")
 
         controller.send(.toggleDestinations(context))
         try await settle()
@@ -434,10 +431,7 @@ final class ScreenshotTests: XCTestCase {
     }
 
     private func shoot(_ windows: [NSWindow], _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
-        try recordImage(Self.composite(windows), name, file: file, line: line)
-    }
-
-    private func recordImage(_ image: NSImage, _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
+        let image = try Self.composite(windows)
         let filename = "sendpoint.\(name)-\(appearance).png"
         let hadBaseline = FileManager.default.fileExists(atPath: directory + "/" + filename)
         let failure = verifySnapshot(
@@ -454,25 +448,20 @@ final class ScreenshotTests: XCTestCase {
     private static func composite(_ windows: [NSWindow]) throws -> NSImage {
         let visible = windows.filter(\.isVisible)
         let bounds = visible.dropFirst().map(\.frame).reduce(visible[0].frame) { $0.union($1) }
-        let layers = try visible.map { window -> (NSWindow, NSImage) in
-            let view = try XCTUnwrap(window.contentView)
-            view.layoutSubtreeIfNeeded()
-            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-            view.effectiveAppearance.performAsCurrentDrawingAppearance {
-                view.cacheDisplay(in: view.bounds, to: bitmap)
-            }
-            let layer = NSImage(size: view.bounds.size)
-            layer.addRepresentation(bitmap)
-            return (window, layer)
-        }
         let image = NSImage(size: bounds.size)
         image.lockFocus()
         (NSApp.appearance?.bestMatch(from: [.darkAqua]) == nil ? NSColor.white : NSColor.black).setFill()
         NSRect(origin: .zero, size: bounds.size).fill()
-        for (window, layer) in layers {
+        for window in visible {
+            let view = try XCTUnwrap(window.contentView)
+            view.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let layer = NSImage(size: view.bounds.size)
+            layer.addRepresentation(bitmap)
             layer.draw(in: NSRect(
                 x: window.frame.minX - bounds.minX, y: window.frame.minY - bounds.minY,
-                width: layer.size.width, height: layer.size.height
+                width: view.bounds.width, height: view.bounds.height
             ), from: .zero, operation: .sourceOver, fraction: 1)
         }
         image.unlockFocus()
