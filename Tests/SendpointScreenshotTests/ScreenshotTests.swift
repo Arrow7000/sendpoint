@@ -61,8 +61,13 @@ final class ScreenshotTests: XCTestCase {
 
         let typed = try XCTUnwrap(Self.textView(in: try XCTUnwrap(editor.contentView)))
         editor.makeFirstResponder(typed)
-        typed.insertText("Follow up on this before the review.", replacementRange: typed.selectedRange())
+        let note = "Follow up on this before the review."
+        typed.insertText(note, replacementRange: typed.selectedRange())
         try await settle()
+        XCTAssertEqual(typed.string, note)
+        XCTAssertEqual(controller.note, note)
+        XCTAssertGreaterThan(typed.visibleRect.width, 0)
+        XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
 
         controller.send(.toggleDestinations(context))
@@ -410,8 +415,8 @@ final class ScreenshotTests: XCTestCase {
 
     private func show(_ windows: [NSWindow]) async throws {
         for window in windows {
-            window.appearance = NSApp.appearance
-            window.alphaValue = 0
+            if window.appearance == nil { window.appearance = NSApp.appearance }
+            window.alphaValue = 1
             window.setFrameOrigin(NSPoint(x: 240, y: 240))
             window.orderFrontRegardless()
         }
@@ -420,7 +425,6 @@ final class ScreenshotTests: XCTestCase {
 
     private func settle() async throws {
         try await Task.sleep(for: .milliseconds(350))
-        for window in NSApp.windows { window.alphaValue = 0 }
     }
 
     private func shoot(_ windows: [NSWindow], _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
