@@ -72,6 +72,8 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(typed.visibleRect.width, 0)
         XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
+        let pdfImage = try XCTUnwrap(NSImage(data: hosting.dataWithPDF(inside: hosting.bounds)))
+        try recordImage(pdfImage, "text-capture-pdf-probe")
 
         controller.send(.toggleDestinations(context))
         try await settle()
@@ -431,7 +433,10 @@ final class ScreenshotTests: XCTestCase {
     }
 
     private func shoot(_ windows: [NSWindow], _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
-        let image = try Self.composite(windows)
+        try recordImage(Self.composite(windows), name, file: file, line: line)
+    }
+
+    private func recordImage(_ image: NSImage, _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
         let filename = "sendpoint.\(name)-\(appearance).png"
         let hadBaseline = FileManager.default.fileExists(atPath: directory + "/" + filename)
         let failure = verifySnapshot(
