@@ -469,7 +469,7 @@ final class ScreenshotTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        process.arguments = ["-x", "-o", "-l", String(window.windowNumber), url.path]
+        process.arguments = ["-x", "-o", "-a", "-l", String(window.windowNumber), url.path]
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
@@ -477,7 +477,9 @@ final class ScreenshotTests: XCTestCase {
                 NSLocalizedDescriptionKey: "Window capture failed for \(window.windowNumber).",
             ])
         }
-        return try XCTUnwrap(NSImage(contentsOf: url))
+        let image = try XCTUnwrap(NSImage(contentsOf: url))
+        XCTAssertEqual(image.size.width / image.size.height, window.frame.width / window.frame.height, accuracy: 0.01)
+        return image
     }
 
     private static func textView(in view: NSView) -> NSTextView? {
