@@ -69,13 +69,18 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(typed.visibleRect.width, 0)
         XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
-        print("CAPTURE_PROBE text=\(typed.string) frame=\(typed.frame) visible=\(typed.visibleRect) container=\(String(describing: typed.textContainer?.containerSize)) origin=\(typed.textContainerOrigin)")
-        let hosting = try XCTUnwrap(editor.contentView as? CaptureHostingView<CaptureView>)
-        print("CAPTURE_PROBE host=\(hosting.frame) bounds=\(hosting.bounds) safeArea=\(hosting.safeAreaInsets) textInHost=\(typed.convert(typed.visibleRect, to: hosting))")
-        hosting.sizingOptions = []
-        hosting.safeAreaRegions = []
-        try await settle()
-        try shoot([editor], "text-capture-hosting-probe")
+        let hosting = try XCTUnwrap(editor.contentView)
+        let native = try XCTUnwrap(typed.bitmapImageRepForCachingDisplay(in: typed.bounds))
+        typed.cacheDisplay(in: typed.bounds, to: native)
+        let nativeImage = NSImage(size: typed.bounds.size)
+        nativeImage.addRepresentation(native)
+        try recordImage(nativeImage, "text-capture-native-probe")
+        let layerBitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        let layerContext = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: layerBitmap))
+        try XCTUnwrap(hosting.layer).render(in: layerContext.cgContext)
+        let layerImage = NSImage(size: hosting.bounds.size)
+        layerImage.addRepresentation(layerBitmap)
+        try recordImage(layerImage, "text-capture-layer-probe")
 
         controller.send(.toggleDestinations(context))
         try await settle()
@@ -435,7 +440,10 @@ final class ScreenshotTests: XCTestCase {
     }
 
     private func shoot(_ windows: [NSWindow], _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
-        let image = try Self.composite(windows)
+        try recordImage(Self.composite(windows), name, file: file, line: line)
+    }
+
+    private func recordImage(_ image: NSImage, _ name: String, file: StaticString = #filePath, line: UInt = #line) throws {
         let filename = "sendpoint.\(name)-\(appearance).png"
         let hadBaseline = FileManager.default.fileExists(atPath: directory + "/" + filename)
         let failure = verifySnapshot(
@@ -460,7 +468,9 @@ final class ScreenshotTests: XCTestCase {
             let view = try XCTUnwrap(window.contentView)
             view.layoutSubtreeIfNeeded()
             let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-            view.cacheDisplay(in: view.bounds, to: bitmap)
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+            }
             let layer = NSImage(size: view.bounds.size)
             layer.addRepresentation(bitmap)
             layer.draw(in: NSRect(
