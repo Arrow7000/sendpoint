@@ -69,6 +69,13 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(typed.visibleRect.width, 0)
         XCTAssertGreaterThan(typed.visibleRect.height, 0)
         try shoot([editor], "text-capture-typed")
+        print("CAPTURE_PROBE text=\(typed.string) frame=\(typed.frame) visible=\(typed.visibleRect) container=\(String(describing: typed.textContainer?.containerSize)) origin=\(typed.textContainerOrigin)")
+        let hosting = try XCTUnwrap(editor.contentView as? CaptureHostingView<CaptureView>)
+        print("CAPTURE_PROBE host=\(hosting.frame) bounds=\(hosting.bounds) safeArea=\(hosting.safeAreaInsets) textInHost=\(typed.convert(typed.visibleRect, to: hosting))")
+        hosting.sizingOptions = []
+        hosting.safeAreaRegions = []
+        try await settle()
+        try shoot([editor], "text-capture-hosting-probe")
 
         controller.send(.toggleDestinations(context))
         try await settle()
