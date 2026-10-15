@@ -40,17 +40,26 @@ jobs:
           grep -q 'Swift version 6\.2' .build/swift-version.log
       - name: Build and test behavior
         run: ./check.sh
+      - name: Collect test crash reports
+        if: always()
+        run: |
+          mkdir -p .build/crash-reports
+          reports="$HOME/Library/Logs/DiagnosticReports"
+          if [ -d "$reports" ]; then
+            find "$reports" -type f \( -name '*Sendpoint*' -o -name '*xctest*' \) -exec cp {} .build/crash-reports/ \;
+          fi
       - name: Upload behavior evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: behavior-evidence
+          name: behavior-evidence-${{ github.run_attempt }}
           include-hidden-files: true
           path: |
             .build/*.log
             .build/*.json
             .build/shots/*.png
             .build/shots-diff/*.png
+            .build/crash-reports/
           if-no-files-found: warn
           retention-days: 14
 
@@ -73,17 +82,26 @@ jobs:
           grep -q 'Swift version 6\.2' .build/swift-version.log
       - name: Render fresh light and dark screenshots (no baseline comparison)
         run: ./shots.sh
+      - name: Collect test crash reports
+        if: always()
+        run: |
+          mkdir -p .build/crash-reports
+          reports="$HOME/Library/Logs/DiagnosticReports"
+          if [ -d "$reports" ]; then
+            find "$reports" -type f \( -name '*Sendpoint*' -o -name '*xctest*' \) -exec cp {} .build/crash-reports/ \;
+          fi
       - name: Upload screenshot evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: screenshots-evidence
+          name: screenshots-evidence-${{ github.run_attempt }}
           include-hidden-files: true
           path: |
             .build/*.log
             .build/*.json
             .build/shots/*.png
             .build/shots-diff/*.png
+            .build/crash-reports/
           if-no-files-found: warn
           retention-days: 14
 
@@ -123,7 +141,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$plist")" = APPL
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
           test -x "$app/Contents/MacOS/Sendpoint"
-          lipo -verify_arch arm64 "$app/Contents/MacOS/Sendpoint"
+          lipo "$app/Contents/MacOS/Sendpoint" -verify_arch arm64
           test -s "$app/Contents/Resources/default.metallib"
           cmp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
           for font in Resources/Fonts/*; do
@@ -154,13 +172,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: packaging-evidence
+          name: packaging-evidence-${{ github.run_attempt }}
           include-hidden-files: true
           path: |
             .build/*.log
             .build/*.json
             .build/shots/*.png
             .build/shots-diff/*.png
+            .build/crash-reports/
             .build/signed-entitlements.plist
             dist/Sendpoint-ci.zip
           if-no-files-found: warn

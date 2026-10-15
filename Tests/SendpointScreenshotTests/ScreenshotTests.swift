@@ -11,6 +11,11 @@ final class ScreenshotTests: XCTestCase {
     private var appearance = "light"
     private var record = SnapshotTestingConfiguration.Record.all
     private var suites: [String] = []
+    private static let application: NSApplication = {
+        let application = NSApplication.shared
+        application.finishLaunching()
+        return application
+    }()
 
     override func setUp() async throws {
         let environment = ProcessInfo.processInfo.environment
@@ -20,7 +25,7 @@ final class ScreenshotTests: XCTestCase {
         self.directory = directory
         appearance = environment["SENDPOINT_SHOTS_APPEARANCE"] ?? "light"
         record = environment["SENDPOINT_SHOTS_RECORD"] == "missing" ? .missing : .all
-        NSApplication.shared.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+        Self.application.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
         Self.registerAppFonts()
     }
 
@@ -222,12 +227,17 @@ final class ScreenshotTests: XCTestCase {
 
         let text = try XCTUnwrap(Self.textView(in: try XCTUnwrap(panel.contentView)))
         text.insertText(" And the copy.", replacementRange: NSRange(location: text.string.utf16.count, length: 0))
-        NSApp.sendEvent(try XCTUnwrap(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
-            windowNumber: panel.windowNumber, context: nil, characters: "\r",
-            charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36
-        )))
+        XCTAssertEqual(model.text, "Ship the export fix on Friday. And the copy.")
+        model.send(.save)
         await store.waitForIdle()
+        guard case let .failed(draft, message, pending) = model.state else {
+            return XCTFail("Expected the real persistence failure to remain visible")
+        }
+        XCTAssertEqual(draft.text, "Ship the export fix on Friday. And the copy.")
+        XCTAssertTrue(message.contains("The disk is full."))
+        XCTAssertTrue(pending)
+        XCTAssertEqual(store.currentNotes.first?.body, "Ship the export fix on Friday.")
+        XCTAssertTrue(panel.isVisible)
         try await settle()
         try shoot([panel], "latest-note-save-failed")
     }
