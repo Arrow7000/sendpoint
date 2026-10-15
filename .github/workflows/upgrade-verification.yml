@@ -1,0 +1,54 @@
+name: Verify v3 upgrade
+on:
+  push:
+    branches: [verify/v3-upgrade]
+permissions:
+  contents: read
+jobs:
+  domain-tests:
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 3
+      - name: Record toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Prepare domain-only package
+        run: |
+          mkdir -p /tmp/sendpoint-domain-tests
+          ln -s "$GITHUB_WORKSPACE/Sources" /tmp/sendpoint-domain-tests/Sources
+          ln -s "$GITHUB_WORKSPACE/Tests" /tmp/sendpoint-domain-tests/Tests
+          cat > /tmp/sendpoint-domain-tests/Package.swift <<'SWIFT'
+          // swift-tools-version:6.2
+          import PackageDescription
+          let package = Package(
+              name: "SendpointDomainVerification",
+              platforms: [.macOS(.v14)],
+              products: [.library(name: "SendpointDomain", targets: ["SendpointDomain"])],
+              targets: [
+                  .target(name: "SendpointDomain", path: "Sources/SendpointDomain", swiftSettings: [.swiftLanguageMode(.v6), .enableUpcomingFeature("MemberImportVisibility")]),
+                  .testTarget(name: "SendpointDomainTests", dependencies: ["SendpointDomain"], path: "Tests/SendpointDomainTests", swiftSettings: [.swiftLanguageMode(.v6), .enableUpcomingFeature("MemberImportVisibility")])
+              ]
+          )
+          SWIFT
+      - name: Confirm migration regression against upstream
+        run: |
+          git show 405d83a:Sources/SendpointDomain/StorePersistence.swift > Sources/SendpointDomain/StorePersistence.swift
+          set +e
+          swift test --package-path /tmp/sendpoint-domain-tests --filter StackDocumentMigrationTests > /tmp/baseline-tests.log 2>&1
+          result=$?
+          set -e
+          git restore Sources/SendpointDomain/StorePersistence.swift
+          cat /tmp/baseline-tests.log
+          test "$result" -ne 0
+          grep -q 'unsupportedVersion(3)' /tmp/baseline-tests.log
+          grep -q "Test Suite 'StackDocumentMigrationTests' failed" /tmp/baseline-tests.log
+      - name: Run all domain tests with the fix
+        run: swift test --package-path /tmp/sendpoint-domain-tests
