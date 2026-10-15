@@ -111,7 +111,7 @@ defaults delete app.sendpoint
 
 Swift 6.2, Swift Package Manager, Xcode 26.2. Speech to text uses [FluidAudio](https://github.com/FluidInference/FluidAudio). Updates use [Sparkle](https://sparkle-project.org).
 
-GitHub Actions **Verify** is the authoritative automated acceptance gate on pull requests and pushes to `main`, and can also be run manually. Its independent `behavior`, `screenshots`, and `packaging` jobs use ephemeral Apple Silicon macOS 15 runners. Review the run and its log, JSON, PNG, and ad-hoc app archive artifacts before accepting a change. See [Verification](docs/verification.md) for review and rerun instructions and coverage limits.
+GitHub Actions **Verify** is the authoritative automated acceptance gate on pull requests and pushes to `main`, and can also be run manually. Its independent `behavior`, `screenshots`, and `packaging` jobs use ephemeral Apple Silicon macOS 26 runners. Review the run and its log, JSON, PNG, and ad-hoc app archive artifacts before accepting a change. See [Verification](docs/verification.md) for review and rerun instructions and coverage limits.
 
 Local commands are optional diagnostics, not required completion steps: `./check.sh` builds and tests, and `./shots.sh` renders light/dark screens (`--diff` compares against the previous local render). Only with explicit approval, `./ship.sh` builds, installs, and launches on your Mac. CI never installs on the developer host. Real microphone, Accessibility/selection, pasted export, downloaded-model transcription, and updater behavior still need manual acceptance. Snapshot rendering is not full-app end-to-end testing; CI packaging is ad-hoc, not notarized.
 

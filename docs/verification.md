@@ -2,7 +2,21 @@
 
 GitHub Actions **Verify** (`.github/workflows/verify.yml`) is the authoritative automated gate for the reviewed revision. It runs on pull requests, pushes to `main`, and manual dispatch. All three independent jobs must pass; configure branch protection to require `behavior`, `screenshots`, and `packaging` if enforcement is wanted.
 
-The workflow uses standard `macos-15` Apple Silicon runners, explicitly selects `/Applications/Xcode_26.2.app`, and verifies arm64 and Swift 6.2. GitHub's [runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) maps `macos-15` to arm64 (`macos-15-intel` is separate); the [image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md) lists Xcode 26.2. Images can change: a missing toolchain is a setup failure, not permission to silently use a different version.
+The workflow uses standard `macos-26` Apple Silicon runners, explicitly selects `/Applications/Xcode_26.2.app`, and verifies arm64, Swift 6.2, and a macOS runtime of at least 26.4. The [image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md) currently lists macOS 26.6.2 and Xcode 26.2. Images can change: a missing toolchain or older runtime fails setup rather than silently selecting another version.
+
+## Runtime coverage
+
+The deployment minimum remains macOS 14. Automated runtime coverage is macOS 26.4 or newer, not every supported macOS version. Older-system release compatibility still needs separate acceptance.
+
+[Run 38681575809](https://github.com/saiashirwad/sendpoint/actions/runs/38681575809), revision `904080a`, compiled with Swift 6.2.3 on macOS 15.7.9, then both XCTest processes aborted with an invalid free. Hosted crash reports showed this common path while deallocating `SurfaceCoordinator` and `LatestNoteEditor`:
+
+```text
+swift::TaskLocal::StopLookupScope::~StopLookupScope()
+swift_task_deinitOnExecutorImpl
+swift_task_deinitOnExecutorMainActorBackDeploy
+```
+
+This strongly matches [Swift issue #88036](https://github.com/swiftlang/swift/issues/88036) and [runtime fix #85204](https://github.com/swiftlang/swift/pull/85204). The newer runner changes the execution runtime while retaining Swift 6.2; it does not fix or certify shipped binaries on older systems. No per-class empty-deinitializer workarounds were added. A completed passing run and artifact review are still required for acceptance.
 
 ## Review a run
 
