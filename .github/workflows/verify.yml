@@ -40,6 +40,16 @@ jobs:
           grep -q 'Swift version 6\.2' .build/swift-version.log
       - name: Build and test behavior
         run: ./check.sh
+      - name: Diagnose test abort
+        if: failure()
+        continue-on-error: true
+        run: |
+          bundle=$(find .build -type d -name SendpointPackageTests.xctest -print -quit)
+          if [ -n "$bundle" ]; then
+            xcrun lldb --batch -o run -o 'thread backtrace all' -- \
+              "$(xcrun --find xctest)" -XCTest SendpointTests.AppCompositionTests \
+              "$bundle" 2>&1 | tee .build/test-backtrace.log
+          fi
       - name: Collect test crash reports
         if: always()
         run: |
@@ -82,6 +92,21 @@ jobs:
           grep -q 'Swift version 6\.2' .build/swift-version.log
       - name: Render fresh light and dark screenshots (no baseline comparison)
         run: ./shots.sh
+      - name: Diagnose screenshot abort
+        if: failure()
+        continue-on-error: true
+        env:
+          SENDPOINT_SHOTS_DIR: ${{ github.workspace }}/.build/diagnostic-shots
+          SENDPOINT_SHOTS_APPEARANCE: light
+          SENDPOINT_SHOTS_RECORD: all
+        run: |
+          mkdir -p "$SENDPOINT_SHOTS_DIR"
+          bundle=$(find .build -type d -name SendpointPackageTests.xctest -print -quit)
+          if [ -n "$bundle" ]; then
+            xcrun lldb --batch -o run -o 'thread backtrace all' -- \
+              "$(xcrun --find xctest)" -XCTest SendpointScreenshotTests.ScreenshotTests \
+              "$bundle" 2>&1 | tee .build/test-backtrace.log
+          fi
       - name: Collect test crash reports
         if: always()
         run: |
